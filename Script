@@ -1,0 +1,88 @@
+#!/bin/bash
+
+errorParameters () {
+    echo $1 >&2
+    echo "El formato debería ser: $0 [-u lista_usuarios]"
+    exit 1 
+}
+
+checkParameters(){
+    ([[ $# -gt 2 ]] || [[ $# -eq 1 ]]) && errorParameters "Número de argumentos incorrecto"
+    if [[ $1 == "-u" ]]; then
+	listUsersWithComa=$2
+	listUsers=${listUsersWithComa//,/ }
+	for usuario in $listUsers; do
+	    if [[ -z $(grep "^$usuario:" /etc/passwd) ]]; then
+	        errorParameters "$usuario no es un usuario"
+	    fi
+	done
+    fi
+}
+
+showSolution(){
+    if [[ $3 == 0 ]]; then
+        echo "Read	Owner = $4		Count = $1	$2"
+    else
+        echo "Write	Owner = $4		Count = $1	$2"
+    fi
+}
+
+checkOption(){
+    if [[ $1 == "-u" ]]; then
+	shift  		
+	sort $file | uniq -c | while read count route mode user; do	  
+	    for userList in $@; do
+	        if [[ $user == $userList ]]; then
+		    showSolution $count $route $mode $userList
+		    break
+		fi	
+	    done
+		    	
+	done
+    else
+	sort $file | uniq -c | while read count route mode user; do
+	    showSolution $count $route $mode $user
+	done
+    fi
+}
+
+generateFile(){
+    let i=1
+    while [[ -f $file ]]; do
+        file="/var/Temp-Script-$i"
+	let i=i+1
+    done
+    touch $file
+
+    find /proc -regex ".*/proc/[0-9]*" 2>/dev/null | while read line; do
+        find "$line/fd" 2>/dev/null | while read secondLine; do
+	    route=$(readlink $secondLine)
+	    [[ -f $route ]] || continue
+	    descriptorOne=${secondLine##*/}
+	    find "$line/fdinfo" 2>/dev/null | while read thirdLine; do
+	        descriptorTwo=${thirdLine##*/}
+		if [[ $descriptorOne == $descriptorTwo ]]; then
+		    aux=$(tail -1 $thirdLine)
+		    mode=${aux: -1}
+		    if [[ $mode == 2 ]]; then
+		        echo "$route 0 $(stat --printf=%U $route)" >> $file
+		        echo "$route 1 $(stat --printf=%U $route)" >> $file
+		    else
+		        echo "$route $mode $(stat --printf=%U $route)" >> $file
+		    fi
+		fi
+            done
+	done
+    done
+}
+
+declare listUsers
+checkParameters $@
+file=/var/Temp-Script
+generateFile
+checkOption $1 $listUsers
+rm -f $file
+
+
+
+
